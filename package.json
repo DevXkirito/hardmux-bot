@@ -1,20 +1,23 @@
 {
   "name": "hardmux-bot",
   "version": "1.0.0",
-  "description": "A Telegram bot for adding subtitles and logos to videos.",
+  "description": "A Telegram bot for adding subtitles and a logo to videos using FFmpeg.",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.61.0",
+    "dotenv": "^16.3.1",
     "fluent-ffmpeg": "^2.1.2",
     "fs": "0.0.1-security",
-    "path": "^0.12.7",
-    "node-fetch": "^2.6.7",
-    "cli-progress": "^3.11.2"
+    "mongoose": "^7.6.5",
+    "node-fetch": "^2.6.9",
+    "node-telegram-bot-api": "^0.61.0",
+    "path": "^0.12.7"
   },
   "engines": {
-    "node": ">=14"
-  }
+    "node": ">=14.0.0"
+  },
+  "author": "Your Name",
+  "license": "MIT"
 }
