@@ -1,22 +1,34 @@
+require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const ffmpeg = require("fluent-ffmpeg");
 const path = require("path");
 const fs = require("fs");
 const fetch = require("node-fetch");
-const cliProgress = require("cli-progress");
+const mongoose = require("mongoose");
 
-// Replace with your bot token
-const token = "6040076450:AAE1R9oM7QmtwBbnURhzLZ2GeYTayI7EkmY";
+// Load environment variables
+const mongoURI = process.env.MONGODB_URI;
+const token = process.env.TELEGRAM_BOT_TOKEN;
+
+// Connect to MongoDB
+mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true });
+
+const userSchema = new mongoose.Schema({
+    chatId: Number,
+    videoPath: String,
+    subtitlePath: String,
+    logoPath: String,
+    preset: String,
+});
+
+const UserSession = mongoose.model("UserSession", userSchema);
+
 const bot = new TelegramBot(token, { polling: true });
 
 const tempDir = path.join(__dirname, "temp");
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
-const fontPath = path.join(__dirname, "fonts", "HelveticaRounded-Bold.ttf");
-
-let userSessions = {}; // Store user session data
-
-// Start Command
+// Command to start
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     bot.sendMessage(chatId, "Send a video or document to add subtitles and a logo.");
@@ -29,21 +41,23 @@ bot.on("document", (msg) => handleFileUpload(msg, "document"));
 async function handleFileUpload(msg, type) {
     const chatId = msg.chat.id;
     const fileId = type === "video" ? msg.video.file_id : msg.document.file_id;
-    const fileName = type === "video" ? `input_${Date.now()}.mp4` : msg.document.file_name;
     const filePath = await bot.getFile(fileId);
     const downloadLink = `https://api.telegram.org/file/bot${token}/${filePath.file_path}`;
 
+    const fileName = type === "video" ? `input_${Date.now()}.mp4` : msg.document.file_name;
     const savePath = path.join(tempDir, fileName);
     await downloadFile(downloadLink, savePath, chatId);
 
-    userSessions[chatId] = { videoPath: savePath };
+    await UserSession.findOneAndUpdate({ chatId }, { videoPath: savePath }, { upsert: true });
+
     bot.sendMessage(chatId, "Now send a subtitle file (.srt or .ass)");
 }
 
 // Handle Subtitle Upload
 bot.on("document", async (msg) => {
     const chatId = msg.chat.id;
-    if (!userSessions[chatId]?.videoPath) return;
+    const session = await UserSession.findOne({ chatId });
+    if (!session || !session.videoPath) return;
 
     const fileName = msg.document.file_name;
     if (!fileName.endsWith(".srt") && !fileName.endsWith(".ass")) {
@@ -54,9 +68,9 @@ bot.on("document", async (msg) => {
     const filePath = await bot.getFile(msg.document.file_id);
     const downloadLink = `https://api.telegram.org/file/bot${token}/${filePath.file_path}`;
     const savePath = path.join(tempDir, fileName);
-
     await downloadFile(downloadLink, savePath, chatId);
-    userSessions[chatId].subtitlePath = savePath;
+
+    await UserSession.findOneAndUpdate({ chatId }, { subtitlePath: savePath });
 
     bot.sendMessage(chatId, "Now send a logo (image or file)");
 });
@@ -67,14 +81,15 @@ bot.on("document", async (msg) => handleLogoUpload(msg, msg.document.file_id));
 
 async function handleLogoUpload(msg, fileId) {
     const chatId = msg.chat.id;
-    if (!userSessions[chatId]?.subtitlePath) return;
+    const session = await UserSession.findOne({ chatId });
+    if (!session || !session.subtitlePath) return;
 
     const filePath = await bot.getFile(fileId);
     const downloadLink = `https://api.telegram.org/file/bot${token}/${filePath.file_path}`;
     const savePath = path.join(tempDir, `logo_${Date.now()}.png`);
 
     await downloadFile(downloadLink, savePath, chatId);
-    userSessions[chatId].logoPath = savePath;
+    await UserSession.findOneAndUpdate({ chatId }, { logoPath: savePath });
 
     // Ask user for preset options
     const options = {
@@ -92,13 +107,13 @@ async function handleLogoUpload(msg, fileId) {
 }
 
 // Handle Preset Selection
-bot.on("callback_query", (query) => {
+bot.on("callback_query", async (query) => {
     const chatId = query.message.chat.id;
-    if (!userSessions[chatId]) return;
-
     if (query.data.startsWith("preset_")) {
-        userSessions[chatId].preset = query.data.split("_")[1];
-        bot.editMessageText(`Preset set to: ${userSessions[chatId].preset}`, {
+        const preset = query.data.split("_")[1];
+        await UserSession.findOneAndUpdate({ chatId }, { preset });
+
+        bot.editMessageText(`Preset set to: ${preset}`, {
             chat_id: chatId,
             message_id: query.message.message_id,
         });
@@ -109,7 +124,7 @@ bot.on("callback_query", (query) => {
 
 // Function to Process Video
 async function processVideo(chatId) {
-    const session = userSessions[chatId];
+    const session = await UserSession.findOne({ chatId });
     if (!session || !session.videoPath || !session.subtitlePath || !session.logoPath) {
         bot.sendMessage(chatId, "Missing required files. Please start again.");
         return;
@@ -127,7 +142,7 @@ async function processVideo(chatId) {
         .complexFilter([
             `[1][0]scale2ref=w=iw/5:h=ow/mdar[logo][video]`,
             `[video][logo]overlay=W-w-10:10`,
-            `subtitles='${path.resolve(session.subtitlePath)}':force_style='FontName=HelveticaRounded-Bold,Fontfile=${fontPath},Bold=1,FontSize=24'`,
+            `subtitles='${path.resolve(session.subtitlePath)}'`,
             `scale=1280:720`,
         ])
         .outputOptions([
@@ -139,17 +154,10 @@ async function processVideo(chatId) {
             `-b:a 192k`,
         ])
         .output(outputPath)
-        .on("progress", (progress) => {
-            if (progress.percent) {
-                bot.editMessageText(`Encoding: ${Math.round(progress.percent)}% done`, {
-                    chat_id: chatId,
-                    message_id: session.progressMessageId,
-                });
-            }
-        })
-        .on("end", () => {
+        .on("end", async () => {
             bot.sendVideo(chatId, fs.createReadStream(outputPath));
-            cleanUp(session);
+            await UserSession.deleteOne({ chatId });
+            fs.unlinkSync(outputPath);
         })
         .on("error", (err) => {
             bot.sendMessage(chatId, "Error processing video.");
@@ -158,24 +166,16 @@ async function processVideo(chatId) {
         .run();
 }
 
-// Function to Download Files with Progress Bar
+// Function to Download Files
 async function downloadFile(url, savePath, chatId) {
     const response = await fetch(url);
     const fileStream = fs.createWriteStream(savePath);
     response.body.pipe(fileStream);
 
     return new Promise((resolve, reject) => {
-        fileStream.on("finish", () => resolve());
+        fileStream.on("finish", resolve);
         fileStream.on("error", reject);
     });
-}
-
-// Function to Cleanup Files
-function cleanUp(session) {
-    fs.unlinkSync(session.videoPath);
-    fs.unlinkSync(session.subtitlePath);
-    fs.unlinkSync(session.logoPath);
-    delete userSessions[session.chatId];
 }
 
 console.log("Bot is running...");
