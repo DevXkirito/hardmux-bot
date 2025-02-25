@@ -11,7 +11,16 @@ const mongoURI = process.env.MONGODB_URI;
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
 // Connect to MongoDB
-mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(mongoURI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    directConnection: true,
+}).then(() => {
+    console.log("✅ Connected to MongoDB successfully!");
+}).catch((err) => {
+    console.error("❌ MongoDB Connection Error:", err.message);
+    process.exit(1); // Exit process if MongoDB fails to connect
+});
 
 const userSchema = new mongoose.Schema({
     chatId: Number,
@@ -178,4 +187,4 @@ async function downloadFile(url, savePath, chatId) {
     });
 }
 
-console.log("Bot is running...");
+console.log("✅ Bot is running...");
