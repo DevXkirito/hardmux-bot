@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const fetch = require("node-fetch"); // Ensure this is installed: npm install node-fetch
+const fetch = require("node-fetch"); // Install using: npm install node-fetch
 const { UserSession } = require("./database");
 
 const downloadDir = "./downloads"; // Directory for storing files
@@ -36,7 +36,10 @@ async function saveFile(bot, message, fileType) {
                 { subtitlePath: filePath },
                 { upsert: true }
             );
-            return "✅ Subtitle saved! Now press **Start Hardmux**.";
+            return {
+                message: "✅ Subtitle saved! Now press **Start Hardmux**.",
+                showButton: true,
+            };
         } else {
             return "❌ Unsupported file type.";
         }
