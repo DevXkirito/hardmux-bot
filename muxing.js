@@ -16,8 +16,8 @@ async function hardmux(bot, chatId, messageId) {
     const subtitlePath = user.subtitlePath;
     const outputPath = `./downloads/${chatId}_hardmux.mp4`;
 
-    // FFmpeg command with font styling for subtitles
-    const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf "subtitles='${subtitlePath}':force_style='FontName=HelveticaRounded-Bold,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=1'" -c:v libx264 -preset veryfast -crf 23 -c:a copy "${outputPath}"`;
+    // FFmpeg command with proper font path
+    const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf "subtitles='${subtitlePath}':fontsdir='${path.dirname(FONT_PATH)}':force_style='FontName=HelveticaRounded-Bold,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=1'" -c:v libx264 -preset veryfast -crf 23 -c:a copy -y "${outputPath}"`;
 
     // Delete the previous message (button)
     bot.deleteMessage(chatId, messageId).catch(console.error);
