@@ -4,7 +4,7 @@ const { UserSession } = require("./database");
 
 const FONT_PATH = path.join(__dirname, "fonts", "HelveticaRounded-Bold.ttf");
 
-async function hardmux(bot, chatId, messageId) {
+async function hardmux(bot, chatId) {
     const user = await UserSession.findOne({ chatId });
 
     if (!user || !user.videoPath || !user.subtitlePath) {
@@ -18,9 +18,6 @@ async function hardmux(bot, chatId, messageId) {
 
     // FFmpeg command with proper font path
     const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf "subtitles='${subtitlePath}':fontsdir='${path.dirname(FONT_PATH)}':force_style='FontName=HelveticaRounded-Bold,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=1'" -c:v libx264 -preset veryfast -crf 23 -c:a copy -y "${outputPath}"`;
-
-    // Delete the previous message (button)
-    bot.deleteMessage(chatId, messageId).catch(console.error);
 
     // Send initial progress message
     let progressMessage = await bot.sendMessage(chatId, "🔄 Hardmuxing your video...");
