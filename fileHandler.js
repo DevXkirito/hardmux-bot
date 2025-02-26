@@ -3,7 +3,7 @@ const path = require("path");
 const fetch = require("node-fetch"); // Install using: npm install node-fetch
 const { UserSession } = require("./database");
 
-const downloadDir = "./downloads"; // Directory for storing files
+const downloadDir = "./downloads";
 
 // Function to format bytes into readable format
 function humanBytes(size) {
@@ -21,23 +21,17 @@ function timeFormatter(milliseconds) {
     const seconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-
     return (hours ? `${hours}h ` : "") + (minutes % 60 ? `${minutes % 60}m ` : "") + `${seconds % 60}s`;
 }
 
-// Function to show progress bar
-async function updateProgress(current, total, message, startTime, bot, chatId, progressMessage) {
-    const now = Date.now();
-    const elapsedTime = now - startTime;
-    const speed = current / (elapsedTime / 1000); // Speed in bytes per second
-    const eta = total > current ? ((total - current) / speed) * 1000 : 0;
-
+// Function to update progress bar
+async function updateProgress(current, total, bot, chatId, progressMessage) {
     const percentage = (current * 100) / total;
     const progress = `[${"◼️".repeat(Math.floor(percentage / 5))}${"◻️".repeat(20 - Math.floor(percentage / 5))}]`;
-    const progressText = `${progress}\n🔹 Progress: ${percentage.toFixed(2)}%\n🔹 Speed: ${humanBytes(speed)}/s\n🔹 ETA: ${timeFormatter(eta)}`;
+    const progressText = `📥 Downloading...\n${progress}\n🔹 Progress: ${percentage.toFixed(2)}%`;
 
     try {
-        await bot.editMessageText(`📥 Downloading...\n${progressText}`, {
+        await bot.editMessageText(progressText, {
             chat_id: chatId,
             message_id: progressMessage.message_id,
         });
@@ -68,7 +62,6 @@ async function saveFile(bot, message, fileType) {
         const totalSize = Number(response.headers.get("content-length"));
         let downloadedSize = 0;
         const startTime = Date.now();
-        let lastUpdate = Date.now();
 
         const fileStream = fs.createWriteStream(filePath);
         const stream = response.body;
@@ -76,12 +69,7 @@ async function saveFile(bot, message, fileType) {
         stream.on("data", async (chunk) => {
             downloadedSize += chunk.length;
             fileStream.write(chunk);
-
-            const now = Date.now();
-            if (now - lastUpdate >= 10000) { // Update progress every 10 seconds
-                await updateProgress(downloadedSize, totalSize, progressMessage, startTime, bot, chatId, progressMessage);
-                lastUpdate = now;
-            }
+            await updateProgress(downloadedSize, totalSize, bot, chatId, progressMessage);
         });
 
         await new Promise((resolve, reject) => {
@@ -96,27 +84,28 @@ async function saveFile(bot, message, fileType) {
 
         let successMessage = "";
         if (fileType === "video") {
-            await UserSession.findOneAndUpdate(
-                { chatId },
-                { videoPath: filePath, filename: fileName },
-                { upsert: true }
-            );
+            await UserSession.findOneAndUpdate({ chatId }, { videoPath: filePath, filename: fileName }, { upsert: true });
             successMessage = "✅ Video saved! Now send a subtitle file.";
         } else if (fileType === "subtitle") {
-            await UserSession.findOneAndUpdate(
-                { chatId },
-                { subtitlePath: filePath },
-                { upsert: true }
-            );
+            await UserSession.findOneAndUpdate({ chatId }, { subtitlePath: filePath }, { upsert: true });
             successMessage = "✅ Subtitle saved! Now press **Start Hardmux**.";
+
+            // Send Inline Button
+            await bot.sendMessage(chatId, successMessage, {
+                reply_markup: {
+                    inline_keyboard: [[{ text: "🚀 Start Hardmux", callback_data: "start_hardmux" }]],
+                },
+            });
+
+            return;
         } else {
             successMessage = "❌ Unsupported file type.";
         }
 
-        return successMessage;
+        await bot.sendMessage(chatId, successMessage);
     } catch (error) {
         console.error("File download error:", error);
-        return "❌ Error downloading file. Please try again.";
+        await bot.sendMessage(chatId, "❌ Error downloading file. Please try again.");
     }
 }
 
