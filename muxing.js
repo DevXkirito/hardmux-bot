@@ -28,20 +28,20 @@ async function hardmux(bot, chatId) {
     process.stderr.on("data", (data) => console.log(data));
 
     let startTime = Date.now();
-    let lastUpdate = Date.now();
 
     const interval = setInterval(async () => {
         const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
         const progressText = `🔄 Encoding in progress...\n⏳ Time elapsed: ${elapsedTime}s`;
 
-        if (Date.now() - lastUpdate >= 10000) { // Update every 10 seconds
+        try {
             await bot.editMessageText(progressText, {
                 chat_id: chatId,
                 message_id: progressMessage.message_id,
-            }).catch(console.error);
-            lastUpdate = Date.now();
+            });
+        } catch (error) {
+            console.error("Error updating progress message:", error);
         }
-    }, 5000);
+    }, 10000); // Update every 10 seconds
 
     process.on("exit", async (code) => {
         clearInterval(interval);
