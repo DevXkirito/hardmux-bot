@@ -21,7 +21,7 @@ bot.on("message", async (msg) => {
             if (typeof response === "object" && response.showButton) {
                 const options = {
                     reply_markup: {
-                        inline_keyboard: [[{ text: "▶️ Start Hardmux", callback_data: "start_hardmux" }]],
+                        inline_keyboard: [[{ text: "Encode", callback_data: "start_hardmux" }]],
                     },
                 };
                 bot.sendMessage(chatId, response.message, options);
